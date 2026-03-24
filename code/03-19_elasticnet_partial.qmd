@@ -229,7 +229,8 @@ weather_recipe
 Now that we have our recipe ready, we **need to apply it** to the training data in a process called prepping:
 
 ```{r weather_prep}
-weather_prep 
+weather_prep <- weather_recipe %>%
+  prep()
 
 weather_prep
 ```
@@ -241,7 +242,7 @@ Now, we're ready to start the model training process!
 ### a. Model specification  
 First, let's specify:  
   - the **type of model** we want to train  
-  - which **engine** we want to use  
+  - which **engine** we want to use   # engine means which package.
 
 An elastic net model is a linear regression model, penalized.  
 
@@ -254,11 +255,14 @@ Let's create a model specification that will **fine-tune** these for us.
 A given model type can be fit with different engines (e.g., through different packages). Here, we'll use the **glmnet** engine/package.  
   
 ```{r enet_spec}
-enet_spec  
+enet_spec <- 
   # Specifying linear regression as our model type, asking to tune the hyperparameters
-
+  linear_reg(penalty = tune(),
+             mixture = tune()
+             ) %>%
+  
   # Specify the engine
-
+  set_engine("glmnet")
 
 enet_spec
 ```
@@ -281,7 +285,12 @@ enet_grid
 Our grid has **121** potential combinations of mixture and penalty.
 
 ```{r}
-
+ggplot(data = enet_grid,
+       aes(x = mixture,
+           y = penalty)
+       
+       ) +
+  geom_point()
 ```
 
 For our grid search, we need:  
@@ -292,7 +301,9 @@ For our grid search, we need:
   
 Let's define our resampling strategy below, using a 10-fold cross validation approach:  
 ```{r resampling_foldcv}
-resampling_foldcv 
+resampling_foldcv <- vfold_cv(weather_train,
+                              v = 10
+                              )
 
 resampling_foldcv
 resampling_foldcv$splits[[1]]
@@ -301,9 +312,14 @@ On each fold, we'll use **437** observations for training and **49** observation
 
 Now, let's perform the grid search below:  
 ```{r enet_grid_result}
-enet_grid_result 
+enet_grid_result <- tune_grid(enet_spec,
+                              preprocessor = weather_recipe,
+                              grid = enet_grid,
+                              resamples = resampling_foldcv
+                              )
 
 enet_grid_result
+enet_grid_result$.metrics[[1]]
 
 ```
 
@@ -315,7 +331,7 @@ Let's collect a summary of metrics (across all folds, for each mixture x penalty
 Firs, RMSE (lower is better):
 ```{r RMSE}
 enet_grid_result %>%
-  ... 
+  collect_metrics() %>%
   filter(.metric == "rmse") %>%
   ggplot(aes(x = penalty, 
              y = mean, 
@@ -350,14 +366,16 @@ It seems that our best model is with hyperparameters set to:
 Let's extract the hyperparameters from the best model as judged by 2 performance metrics:  
 ```{r}
 # Based on lowest RMSE
-best_rmse 
+best_rmse <- enet_grid_result %>%
+  select_best(metric = "rmse")
 
 best_rmse
 ```
 
 ```{r}
 # Based on greatest R2
-best_r2 
+best_r2 <- enet_grid_result %>%
+  select_best(metric = "rsq")
 
 best_r2
 
@@ -365,6 +383,7 @@ best_r2
 Based on RMSE, we would choose mixture = 0, penalty = 0.
 
 Based on R2, we would choose mixture = 0, penalty = 0.7.
+Mine is on RMSE, penalty = 1, mixture = 0, for R2, 0, 0.
 
 Let's use the hyperparameter values that optimized R2 to fit our final model.
 
